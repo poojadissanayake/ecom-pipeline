@@ -135,9 +135,27 @@ jobs:
           echo "Product:   $PRODUCT_IP"
           echo "Order:     $ORDER_IP"
           echo "Customer:  $CUSTOMER_IP"
-          curl -f "$PRODUCT_IP/health"
-          curl -f "$ORDER_IP/health"
-          curl -f "$CUSTOMER_IP/health"
+
+          # Retry function for health checks for 5mins
+          wait_for_health() {
+            local url=$1
+            local name=$2
+            for i in $(seq 1 20); do
+              if curl -fsS "$url/health" > /dev/null; then
+                echo "$name is healthy (attempt $i)"
+                return 0
+              else
+                echo "$name not ready yet (attempt $i), waiting..."
+                sleep 5
+              fi
+            done
+            echo "Timeout waiting for $name to become healthy!" >&2
+            return 1
+          }
+
+          wait_for_health "$PRODUCT_IP"   "Product Service"
+          wait_for_health "$ORDER_IP"     "Order Service"
+          wait_for_health "$CUSTOMER_IP"  "Customer Service"
 
       # frontend: inject URLs, build/push, deploy
       - name: Inject backend URLs into frontend/main.js
