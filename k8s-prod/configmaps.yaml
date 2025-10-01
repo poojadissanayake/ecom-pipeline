@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: ecommerce-config-w10t2
+  name: ecommerce-config
 data:
   # Database names
   PRODUCTS_DB_NAME: products
@@ -9,9 +9,9 @@ data:
   CUSTOMERS_DB_NAME: customers
 
   # Internal service URLs (cluster DNS names)
-  PRODUCT_SERVICE_URL: http://product-service-w10t2:8000
-  ORDER_SERVICE_URL: http://order-service-w10t2:8001
-  CUSTOMER_SERVICE_URL: http://customer-service-w10t2:8002
+  PRODUCT_SERVICE_URL: http://product-service:8000
+  ORDER_SERVICE_URL: http://order-service:8000
+  CUSTOMER_SERVICE_URL: http://customer-service:8000
 
   # Product image storage
   AZURE_STORAGE_CONTAINER_NAME: product-images

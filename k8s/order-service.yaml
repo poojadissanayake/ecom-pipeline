@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: order-service-w10t2
+  name: order-service
   labels:
     app: order-service
 spec:
@@ -22,38 +22,38 @@ spec:
             - containerPort: 8000
           env:
             - name: POSTGRES_HOST
-              value: order-db-service-w10t2
+              value: order-db-service
             - name: POSTGRES_DB
               valueFrom:
                 configMapKeyRef:
-                  name: ecommerce-config-w10t2
+                  name: ecommerce-config
                   key: ORDERS_DB_NAME
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: ecommerce-secret-w10t2
+                  name: ecommerce-secret
                   key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: ecommerce-secret-w10t2
+                  name: ecommerce-secret
                   key: POSTGRES_PASSWORD
 
             - name: PRODUCT_SERVICE_URL
               valueFrom:
                 configMapKeyRef:
-                  name: ecommerce-config-w10t2
+                  name: ecommerce-config
                   key: PRODUCT_SERVICE_URL
             - name: CUSTOMER_SERVICE_URL
               valueFrom:
                 configMapKeyRef:
-                  name: ecommerce-config-w10t2
+                  name: ecommerce-config
                   key: CUSTOMER_SERVICE_URL
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: order-service-w10t2
+  name: order-service
   labels:
     app: order-service
 spec:
@@ -61,6 +61,6 @@ spec:
     app: order-service
   ports:
     - protocol: TCP
-      port: 8001
+      port: 8000
       targetPort: 8000
-  type: LoadBalancer
+  type: ClusterIP

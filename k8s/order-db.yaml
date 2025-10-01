@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: order-db-deployment-w10t2
+  name: order-db-deployment
   labels:
     app: order-db
 spec:
@@ -23,23 +23,23 @@ spec:
             - name: POSTGRES_DB
               valueFrom:
                 configMapKeyRef:
-                  name: ecommerce-config-w10t2
+                  name: ecommerce-config
                   key: ORDERS_DB_NAME
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: ecommerce-secret-w10t2
+                  name: ecommerce-secret
                   key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: ecommerce-secret-w10t2
+                  name: ecommerce-secret
                   key: POSTGRES_PASSWORD
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: order-db-service-w10t2
+  name: order-db-service
   labels:
     app: order-db
 spec:
