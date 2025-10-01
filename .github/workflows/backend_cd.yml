@@ -1,0 +1,138 @@
+name: CD - Deploy Backend Services to AKS (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      aks_cluster_name:
+        required: true
+        type: string
+      aks_resource_group:
+        required: true
+        type: string
+    outputs:
+      PRODUCT_IP:
+        description: Product Service LB IP
+        value: ${{ jobs.deploy_backend.outputs.PRODUCT_IP }}
+      ORDER_IP:
+        description: Order Service LB IP
+        value: ${{ jobs.deploy_backend.outputs.ORDER_IP }}
+      CUSTOMER_IP:
+        description: Customer Service LB IP
+        value: ${{ jobs.deploy_backend.outputs.CUSTOMER_IP }}
+
+jobs:
+  deploy_backend:
+    runs-on: ubuntu-latest
+    outputs:
+      PRODUCT_IP: ${{ steps.get_product_ip.outputs.external_ip }}
+      ORDER_IP: ${{ steps.get_order_ip.outputs.external_ip }}
+      CUSTOMER_IP: ${{ steps.get_customer_ip.outputs.external_ip }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group "${{ inputs.aks_resource_group }}" \
+            --name "${{ inputs.aks_cluster_name }}" \
+            --overwrite-existing
+          kubectl cluster-info
+
+      - name: Deploy Backend Infrastructure (ConfigMaps, Secrets, Databases)
+        run: |
+          cd k8s
+          kubectl apply -f configmaps.yaml
+          kubectl apply -f secrets.yaml
+          kubectl apply -f product-db.yaml
+          kubectl apply -f order-db.yaml
+          kubectl apply -f customer-db.yaml
+
+      - name: Add Storage keys to ecommerce-secret-w10t2
+        shell: bash
+        run: |
+          set -e
+          NS=default
+          SA_NAME='${{ secrets.STORAGE_ACCOUNT_NAME }}'
+          if [ -z "$SA_NAME" ]; then
+              echo "STORAGE_ACCOUNT_NAME secret is not set." >&2
+              exit 1
+          fi
+
+          # Get a storage key from the RG that hosts your staging resources
+          SA_KEY=$(az storage account keys list \
+              -g "${{ inputs.aks_resource_group }}" \
+              -n "$SA_NAME" \
+              --query "[0].value" -o tsv)
+
+          if [ -z "$SA_KEY" ]; then
+              echo "Failed to retrieve key for storage account '$SA_NAME'." >&2
+              exit 1
+          fi
+
+          # Ensure the core secret exists (created by secrets.yaml), then merge in storage keys
+          kubectl -n "$NS" patch secret ecommerce-secret-w10t2 \
+              --type merge \
+              -p "{\"stringData\":{
+                  \"AZURE_STORAGE_ACCOUNT_NAME\":\"$SA_NAME\",
+                  \"AZURE_STORAGE_ACCOUNT_KEY\":\"$SA_KEY\"
+                  }}"
+
+      - name: Deploy Backend Microservices (Product, Order, Customer)
+        run: |
+          cd k8s
+          kubectl apply -f product-service.yaml
+          kubectl apply -f order-service.yaml
+          kubectl apply -f customer-service.yaml
+
+      - name: Wait for Backend LoadBalancer IPs
+        shell: bash
+        run: |
+          echo "Waiting for Product, Order, Customer LoadBalancer IPs to be assigned (up to 5 minutes)..."
+          PRODUCT_IP=""
+          ORDER_IP=""
+          CUSTOMER_IP=""
+
+          for i in $(seq 1 60); do
+            echo "Attempt $i/60 to get IPs..."
+            PRODUCT_IP=$(kubectl get service product-service-w10t2   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            ORDER_IP=$(kubectl   get service order-service-w10t2     -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            CUSTOMER_IP=$(kubectl get service customer-service-w10t2 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+            if [[ -n "$PRODUCT_IP" && -n "$ORDER_IP" && -n "$CUSTOMER_IP" ]]; then
+              echo "All backend LoadBalancer IPs assigned!"
+              echo "Product Service IP:  $PRODUCT_IP"
+              echo "Order Service IP:    $ORDER_IP"
+              echo "Customer Service IP: $CUSTOMER_IP"
+              break
+            fi
+            sleep 5
+          done
+
+          if [[ -z "$PRODUCT_IP" || -z "$ORDER_IP" || -z "$CUSTOMER_IP" ]]; then
+            echo "Error: One or more LoadBalancer IPs not assigned after timeout."
+            exit 1
+          fi
+
+          # Export for subsequent steps in this job
+          echo "PRODUCT_IP=$PRODUCT_IP"   >> $GITHUB_ENV
+          echo "ORDER_IP=$ORDER_IP"       >> $GITHUB_ENV
+          echo "CUSTOMER_IP=$CUSTOMER_IP" >> $GITHUB_ENV
+
+      - name: Capture Product Service IP for Workflow Output
+        id: get_product_ip
+        run: echo "external_ip=$PRODUCT_IP" >> $GITHUB_OUTPUT
+
+      - name: Capture Order Service IP for Workflow Output
+        id: get_order_ip
+        run: echo "external_ip=$ORDER_IP" >> $GITHUB_OUTPUT
+
+      - name: Capture Customer Service IP for Workflow Output
+        id: get_customer_ip
+        run: echo "external_ip=$CUSTOMER_IP" >> $GITHUB_OUTPUT

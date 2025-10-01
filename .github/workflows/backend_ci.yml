@@ -1,0 +1,39 @@
+name: Backend CI - Build & Push Images
+
+on:
+  workflow_run:
+    workflows: ["Infra - Provision Staging"]
+    types: 
+        - completed
+
+jobs:
+  build_and_push_backends:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+
+      - name: Build & Push Product Service
+        run: |
+          docker build -t ${{ secrets.AZURE_CONTAINER_REGISTRY }}.azurecr.io/product_service:latest ./backend/product_service
+          docker push ${{ secrets.AZURE_CONTAINER_REGISTRY }}.azurecr.io/product_service:latest
+
+      - name: Build & Push Order Service
+        run: |
+          docker build -t ${{ secrets.AZURE_CONTAINER_REGISTRY }}.azurecr.io/order_service:latest ./backend/order_service
+          docker push ${{ secrets.AZURE_CONTAINER_REGISTRY }}.azurecr.io/order_service:latest
+
+      - name: Build & Push Customer Service
+        run: |
+          docker build -t ${{ secrets.AZURE_CONTAINER_REGISTRY }}.azurecr.io/customer_service:latest ./backend/customer_service
+          docker push ${{ secrets.AZURE_CONTAINER_REGISTRY }}.azurecr.io/customer_service:latest

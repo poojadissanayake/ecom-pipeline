@@ -1,0 +1,29 @@
+name: Frontend CI - Build & Push Image
+
+on:
+  workflow_run:
+    workflows: ["Backend CI - Build & Push Images"]
+    types:
+      - completed
+
+jobs:
+  build_and_push_frontend:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+
+      - name: Build & Push Frontend
+        run: |
+          docker build -t ${{ secrets.AZURE_CONTAINER_REGISTRY }}.azurecr.io/frontend:latest ./frontend
+          docker push ${{ secrets.AZURE_CONTAINER_REGISTRY }}.azurecr.io/frontend:latest
