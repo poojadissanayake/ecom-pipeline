@@ -2,13 +2,13 @@
 name: Infra - Provision Staging
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - testing
     paths:
       - ".terraform/**"
       - ".github/workflows/staging_infra.yml"
+  workflow_dispatch:
 
 jobs:
   terraform_apply:
