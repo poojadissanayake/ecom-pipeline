@@ -2,19 +2,6 @@ name: CD - Deploy Frontend to AKS (Reusable)
 
 on:
   workflow_call:
-    inputs:
-      product_api_url:
-        description: "Full Product API base URL (http://X.X.X.X:8000)"
-        required: true
-        type: string
-      order_api_url:
-        description: "Full Order API base URL (http://X.X.X.X:8001)"
-        required: true
-        type: string
-      customer_api_url:
-        description: "Full Customer API base URL (http://X.X.X.X:8002)"
-        required: true
-        type: string
 
 jobs:
   deploy_frontend:
@@ -32,18 +19,6 @@ jobs:
       - name: Login to ACR
         run: az acr login --name ${{ secrets.AZURE_CONTAINER_REGISTRY }}
 
-      # Inject the three backend URLs into frontend/main.js placeholders
-      - name: Inject backend URLs into frontend/main.js
-        run: |
-          sed -i "s|_PRODUCT_API_URL_|${{ inputs.product_api_url }}|g" frontend/main.js
-          sed -i "s|_ORDER_API_URL_|${{ inputs.order_api_url }}|g" frontend/main.js
-          sed -i "s|_CUSTOMER_API_URL_|${{ inputs.customer_api_url }}|g" frontend/main.js
-
-          # Display the modified file content for debugging
-          echo "--- Modified main.js content ---"
-          cat frontend/main.js
-          echo "---------------------------------"
-
       - name: Build & Push frontend image (latest)
         run: |
           docker build -t ${{ secrets.AZURE_CONTAINER_REGISTRY }}.azurecr.io/frontend:latest ./frontend
@@ -57,3 +32,6 @@ jobs:
 
       - name: Deploy frontend manifest
         run: kubectl apply -f k8s/frontend.yaml
+
+      - name: Wait for frontend deployment rollout
+        run: kubectl rollout status deploy/frontend --timeout=5m

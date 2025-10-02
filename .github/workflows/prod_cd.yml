@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - main
+      # ignore changes to workflow files to avoid unwanted prod deploys
+    paths-ignore:
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
@@ -28,17 +31,6 @@ jobs:
       - name: ACR login
         run: az acr login --name ${{ secrets.PROD_AZURE_CONTAINER_REGISTRY }}
 
-      - name: Build & push backend images
-        run: |
-          docker build -t ${{ secrets.PROD_AZURE_CONTAINER_REGISTRY }}.azurecr.io/product_service:latest ./backend/product_service
-          docker push ${{ secrets.PROD_AZURE_CONTAINER_REGISTRY }}.azurecr.io/product_service:latest
-
-          docker build -t ${{ secrets.PROD_AZURE_CONTAINER_REGISTRY }}.azurecr.io/order_service:latest ./backend/order_service
-          docker push ${{ secrets.PROD_AZURE_CONTAINER_REGISTRY }}.azurecr.io/order_service:latest
-
-          docker build -t ${{ secrets.PROD_AZURE_CONTAINER_REGISTRY }}.azurecr.io/customer_service:latest ./backend/customer_service
-          docker push ${{ secrets.PROD_AZURE_CONTAINER_REGISTRY }}.azurecr.io/customer_service:latest
-
       - name: Get AKS credentials
         run: |
           az aks get-credentials \
@@ -57,8 +49,8 @@ jobs:
           kubectl apply -f order-db.yaml
           kubectl apply -f customer-db.yaml
 
-      # Inject Storage creds into ecommerce-secret-w10t2 for product-service
-      - name: Ensure storage keys are in ecommerce-secret-w10t2
+      # Inject Storage creds into ecommerce-secret for product-service
+      - name: Ensure storage keys are in ecommerce-secret
         shell: bash
         run: |
           set -e
@@ -84,7 +76,7 @@ jobs:
           fi
 
           # Merge keys into the core secret (created by secrets.yaml)
-          kubectl -n "$NS" patch secret ecommerce-secret-w10t2 \
+          kubectl -n "$NS" patch secret ecommerce-secret \
             --type merge \
             -p "{\"stringData\":{
               \"AZURE_STORAGE_ACCOUNT_NAME\":\"$SA_NAME\",
@@ -99,72 +91,11 @@ jobs:
           kubectl apply -f order-service.yaml
           kubectl apply -f customer-service.yaml
 
-      - name: Wait for backend LoadBalancer IPs
-        id: wait_ips
-        shell: bash
+      - name: Wait for backend deployments rollout
         run: |
-          set -e
-          echo "Waiting for Product/Order/Customer external IPs..."
-          PRODUCT_IP=""
-          ORDER_IP=""
-          CUSTOMER_IP=""
-
-          for i in $(seq 1 60); do
-            PRODUCT_IP=$(kubectl get svc product-service-w10t2   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-            ORDER_IP=$(kubectl   get svc order-service-w10t2     -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-            CUSTOMER_IP=$(kubectl get svc customer-service-w10t2 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-            echo "Attempt $i: P=$PRODUCT_IP O=$ORDER_IP C=$CUSTOMER_IP"
-            if [[ -n "$PRODUCT_IP" && -n "$ORDER_IP" && -n "$CUSTOMER_IP" ]]; then
-              break
-            fi
-            sleep 5
-          done
-
-          if [[ -z "$PRODUCT_IP" || -z "$ORDER_IP" || -z "$CUSTOMER_IP" ]]; then
-            echo "Timeout waiting for LB IPs"; exit 1
-          fi
-
-          echo "PRODUCT_IP=http://$PRODUCT_IP:8000"   >> $GITHUB_ENV
-          echo "ORDER_IP=http://$ORDER_IP:8001"       >> $GITHUB_ENV
-          echo "CUSTOMER_IP=http://$CUSTOMER_IP:8002" >> $GITHUB_ENV
-
-      - name: Acceptance tests (health checks)
-        shell: bash
-        run: |
-          set -e
-          echo "Product:   $PRODUCT_IP"
-          echo "Order:     $ORDER_IP"
-          echo "Customer:  $CUSTOMER_IP"
-
-          # Retry function for health checks for 5mins
-          wait_for_health() {
-            local url=$1
-            local name=$2
-            for i in $(seq 1 20); do
-              if curl -fsS "$url/health" > /dev/null; then
-                echo "$name is healthy (attempt $i)"
-                return 0
-              else
-                echo "$name not ready yet (attempt $i), waiting..."
-                sleep 5
-              fi
-            done
-            echo "Timeout waiting for $name to become healthy!" >&2
-            return 1
-          }
-
-          wait_for_health "$PRODUCT_IP"   "Product Service"
-          wait_for_health "$ORDER_IP"     "Order Service"
-          wait_for_health "$CUSTOMER_IP"  "Customer Service"
-
-      # frontend: inject URLs, build/push, deploy
-      - name: Inject backend URLs into frontend/main.js
-        run: |
-          sed -i "s|_PRODUCT_API_URL_|$PRODUCT_IP|g"   frontend/main.js
-          sed -i "s|_ORDER_API_URL_|$ORDER_IP|g"       frontend/main.js
-          sed -i "s|_CUSTOMER_API_URL_|$CUSTOMER_IP|g" frontend/main.js
-          echo "Preview:"
-          head -n 20 frontend/main.js
+          kubectl rollout status deployment/product-service --timeout=5m
+          kubectl rollout status deployment/order-service --timeout=5m
+          kubectl rollout status deployment/customer-service --timeout=5m
 
       - name: Build & push frontend image
         run: |
@@ -173,6 +104,9 @@ jobs:
 
       - name: Deploy frontend
         run: kubectl apply -f k8s-prod/frontend.yaml
+
+      - name: Wait for frontend rollout
+        run: kubectl rollout status deploy/frontend --timeout=5m
 
       - name: Done
         run: echo "Production deployment completed successfully!"

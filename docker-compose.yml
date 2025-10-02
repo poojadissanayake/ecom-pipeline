@@ -55,6 +55,18 @@ services:
       timeout: 5s
       retries: 10
 
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672" # AMQP
+      - "15672:15672" # Management UI (http://localhost:15672, user/pass: guest/guest)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   product_service:
     build:
       context: ./backend/product_service
@@ -97,11 +109,16 @@ services:
       POSTGRES_PASSWORD: postgres
       PRODUCT_SERVICE_URL: http://product_service:8000
       CUSTOMER_SERVICE_URL: http://customer_service:8000
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       order_db:
         condition: service_healthy
       product_service:
         condition: service_started
+      customer_service:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
     volumes:
       - ./backend/order_service/app:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000

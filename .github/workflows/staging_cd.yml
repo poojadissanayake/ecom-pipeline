@@ -8,54 +8,49 @@ on:
 
 jobs:
   deploy_backend:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'testing' }}
     uses: ./.github/workflows/backend_cd.yml
     with:
       aks_cluster_name: ${{ vars.AKS_CLUSTER_NAME }}
       aks_resource_group: ${{ vars.AKS_RESOURCE_GROUP }}
     secrets: inherit
 
-  acceptance_tests:
+  deploy_frontend:
     needs: deploy_backend
+    uses: ./.github/workflows/frontend_cd.yml
+    secrets: inherit
+
+  acceptance_tests:
+    needs: deploy_frontend
     runs-on: ubuntu-latest
     steps:
-      - name: Health checks
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Set AKS context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ vars.AKS_RESOURCE_GROUP }}
+          cluster-name: ${{ vars.AKS_CLUSTER_NAME }}
+      - name: Get Frontend IP
+        id: ip
         run: |
-          echo "Checking Product: ${{ needs.deploy_backend.outputs.PRODUCT_IP }}:8000"
-          for i in {1..30}; do
-          if curl -s --fail http://${{ needs.deploy_backend.outputs.PRODUCT_IP }}:8000/health; then
-              echo "Product service healthy"
-              break
-          fi
-          echo "Waiting for Product service... attempt $i"
-          sleep 10
+          for i in {1..60}; do
+            EP=$(kubectl get svc frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            if [ -n "$EP" ]; then
+              echo "FRONTEND=http://$EP" >> $GITHUB_ENV
+              exit 0
+            fi
+            echo "Waiting for frontend LB IP... ($i/60)"
+            sleep 5
           done
+          echo "Timeout waiting for frontend IP" >&2
+          exit 1
 
-          echo "Checking Order: ${{ needs.deploy_backend.outputs.ORDER_IP }}:8001"
-          for i in {1..30}; do
-          if curl -s --fail http://${{ needs.deploy_backend.outputs.ORDER_IP }}:8001/health; then
-              echo "Order service healthy"
-              break
-          fi
-          echo "Waiting for Order service... attempt $i"
-          sleep 10
-          done
-
-          echo "Checking Customer: ${{ needs.deploy_backend.outputs.CUSTOMER_IP }}:8002"
-          for i in {1..30}; do
-          if curl -s --fail http://${{ needs.deploy_backend.outputs.CUSTOMER_IP }}:8002/health; then
-              echo "Customer service healthy"
-              break
-          fi
-          echo "Waiting for Customer service... attempt $i"
-          sleep 10
-          done
-
-  deploy_frontend:
-    needs: [acceptance_tests, deploy_backend]
-    uses: ./.github/workflows/frontend_cd.yml
-    with:
-      product_api_url: http://${{ needs.deploy_backend.outputs.PRODUCT_IP }}:8000
-      order_api_url: http://${{ needs.deploy_backend.outputs.ORDER_IP }}:8001
-      customer_api_url: http://${{ needs.deploy_backend.outputs.CUSTOMER_IP }}:8002
-    secrets: inherit
+      - name: Ping proxied APIs via frontend
+        run: |
+          set -e
+          curl -fsS "$FRONTEND/api/products/"   | head -c 200
+          curl -fsS "$FRONTEND/api/orders/"     | head -c 200
+          curl -fsS "$FRONTEND/api/customers/"  | head -c 200

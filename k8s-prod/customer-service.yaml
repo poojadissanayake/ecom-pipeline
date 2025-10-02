@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: customer-service-w10t2
+  name: customer-service
   labels:
     app: customer-service
 spec:
@@ -22,27 +22,27 @@ spec:
             - containerPort: 8000
           env:
             - name: POSTGRES_HOST
-              value: customer-db-service-w10t2
+              value: customer-db-service
             - name: POSTGRES_DB
               valueFrom:
                 configMapKeyRef:
-                  name: ecommerce-config-w10t2
+                  name: ecommerce-config
                   key: CUSTOMERS_DB_NAME
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: ecommerce-secret-w10t2
+                  name: ecommerce-secret
                   key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: ecommerce-secret-w10t2
+                  name: ecommerce-secret
                   key: POSTGRES_PASSWORD
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: customer-service-w10t2
+  name: customer-service
   labels:
     app: customer-service
 spec:
@@ -50,6 +50,6 @@ spec:
     app: customer-service
   ports:
     - protocol: TCP
-      port: 8002
+      port: 8000
       targetPort: 8000
-  type: LoadBalancer
+  type: ClusterIP

@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: product-db-deployment-w10t2
+  name: product-db-deployment
   labels:
     app: product-db
 spec:
@@ -23,23 +23,23 @@ spec:
             - name: POSTGRES_DB
               valueFrom:
                 configMapKeyRef:
-                  name: ecommerce-config-w10t2
+                  name: ecommerce-config
                   key: PRODUCTS_DB_NAME
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: ecommerce-secret-w10t2
+                  name: ecommerce-secret
                   key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: ecommerce-secret-w10t2
+                  name: ecommerce-secret
                   key: POSTGRES_PASSWORD
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: product-db-service-w10t2
+  name: product-db-service
   labels:
     app: product-db
 spec:
