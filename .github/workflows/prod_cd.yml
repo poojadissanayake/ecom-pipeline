@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - main
+      # ignore changes to workflow files to avoid unwanted prod deploys
+    paths-ignore:
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
