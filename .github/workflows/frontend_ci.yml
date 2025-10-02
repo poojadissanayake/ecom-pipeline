@@ -8,7 +8,7 @@ on:
 
 jobs:
   build_and_push_frontend:
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.head_branch == 'testing' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'testing' }}
     runs-on: ubuntu-latest
 
     steps:
